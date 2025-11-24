@@ -8,73 +8,63 @@ assignees: ''
 ---
 
 ---
-name: Bug Report
-about: Report a bug or unexpected behavior
-title: '[BUG] '
-labels: bug
+name: Feature Request
+about: Suggest a new feature or enhancement
+title: '[FEATURE] '
+labels: enhancement
 assignees: ''
 ---
 
-## Bug Description
+## Feature Description
 
-A clear and concise description of what the bug is.
+A clear and concise description of the feature you'd like to see.
 
-## Environment
+## Problem Statement
 
-- **OS**: [e.g., Windows 11]
-- **Node.js Version**: [run `node -v`]
-- **Package Version**: [run `npm view @janus-mcp/converter version`]
-- **Claude Desktop Version**: [if applicable]
+What problem does this feature solve? Describe the use case or pain point.
 
-## Steps to Reproduce
+**Example**: "When converting hundreds of TIFF files, I need to..."
 
-1. Go to '...'
-2. Run command '...'
-3. Provide file path '...'
-4. See error
+## Proposed Solution
 
-## Expected Behavior
+Describe how you envision this feature working.
 
-A clear description of what you expected to happen.
-
-## Actual Behavior
-
-A clear description of what actually happened.
-
-## Error Messages
-
+**Example**:
 ```
-Paste any error messages here
+Add a new MCP tool `batch_convert_tiff_to_pdf` that accepts:
+- Input directory path
+- Output directory path
+- Optional filter patterns
 ```
 
-## Sample Files
+## Alternative Solutions
 
-If applicable, provide:
-- TIFF file compression format (tag): [e.g., 34712, 34713, 34663]
-- File size: [e.g., 1.9 MB]
-- Number of pages: [e.g., 9 pages]
+Have you considered any alternative approaches?
 
-**Note**: Do not upload actual files containing sensitive information. Describe the file characteristics instead.
+## Use Case
 
-## Logs
+Describe a specific scenario where this feature would be useful.
 
-**Claude Desktop Logs** (if applicable):
-```
-Paste relevant log output here
-```
+**Example**:
+- Industry: Medical imaging
+- Workflow: Batch processing scanned documents
+- Volume: 500+ files per day
 
-**MCP Server Output** (if applicable):
-```
-Paste stderr output here
-```
+## Benefits
+
+Who would benefit from this feature?
+- [ ] Individual users
+- [ ] Enterprise users
+- [ ] Developers integrating with the library
+- [ ] All users
 
 ## Additional Context
 
-Add any other context about the problem here.
+Add any other context, screenshots, or examples about the feature request.
 
 ## Checklist
 
-- [ ] I have searched existing Issues to avoid duplicates
-- [ ] I have included all required environment information
-- [ ] I have provided clear reproduction steps
-- [ ] I have included error messages (if applicable)
+- [ ] I have searched existing Issues and Discussions to avoid duplicates
+- [ ] I have described a clear use case
+- [ ] I have explained the expected benefits
+- [ ] I am willing to help test this feature (if implemented)
