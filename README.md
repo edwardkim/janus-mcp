@@ -6,7 +6,6 @@
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.17.0-brightgreen)](https://nodejs.org/)
-[![NPM Downloads](https://img.shields.io/npm/dt/@janus-mcp/converter?color=blue&label=downloads&logo=npm)](https://www.npmjs.com/package/@janus-mcp/converter)
 
 ## Overview
 
@@ -53,24 +52,73 @@ A: If your TIFF uses proprietary tags like 34712 or 34713 , standard viewers can
 
 ### Prerequisites
 
+#### Node.js
 - **Node.js**: ≥18.17.0, ≥20.3.0, or ≥21.0.0
-- **libtiff**: System library for TIFF support
+
+#### Platform-Specific Dependencies
+
+##### Linux (Ubuntu/Debian/Mint)
+
+The package includes prebuilt binaries for Linux x64 (glibc ≥ 2.31), but requires system libraries:
+
+**Check if libraries are installed:**
+```bash
+# Check all required libraries at once
+pkg-config --modversion libtiff-4 libopenjp2 libjpeg libpng zlib
+
+# Expected output:
+# 4.1.0 (or higher)
+# 2.3.1 (or higher)
+# 2.0.3 (or higher)
+# 1.6.37 (or higher)
+# 1.2.11 (or higher)
+```
+
+**If any library is missing, install development packages:**
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  libtiff-dev \
+  libopenjp2-7-dev \
+  libjpeg-dev \
+  libpng-dev \
+  zlib1g-dev
+```
+
+**Verify installation:**
+```bash
+# Check library versions
+pkg-config --modversion libtiff-4 libopenjp2 libjpeg libpng zlib
+
+# Expected output (versions may vary):
+# libtiff: 4.1.0+
+# openjpeg: 2.3.1+
+# libjpeg: 2.0.3+
+# libpng: 1.6.37+
+# zlib: 1.2.11+
+```
+
+**Distribution Compatibility:**
+- ✅ Ubuntu 20.04 LTS or later
+- ✅ Ubuntu 22.04 LTS, 24.04 LTS
+- ✅ Linux Mint 20 or later
+- ✅ Pop!_OS 20.04 or later
+- ✅ Debian 11 (Bullseye) or later
+- ✅ Fedora 35 or later
+- ✅ RHEL 9 or later
+
+##### macOS
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install libtiff-dev
-
-# macOS (Homebrew)
-brew install libtiff
-
-### Windows Prerequisites
-
-1. **Visual Studio Build Tools** (Workload: C++ Desktop Development)
-2. **vcpkg** (Package Manager)
-
-# Install libtiff via vcpkg
-vcpkg install libtiff:x64-windows
+# Install dependencies via Homebrew
+brew install libtiff openjpeg
 ```
+
+##### Windows
+
+**Prebuilt binaries included** - no additional dependencies needed for Windows x64.
+
+The package includes statically-linked binaries with all dependencies embedded.
 
 ### NPM Installation
 
@@ -97,36 +145,8 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "janus-converter": {
-      "command": "node",
-      "args": ["/path/to/mcp-janus-converter/index.js"]
-    }
-  }
-}
-```
-
-**Before** (separate packages):
-```json
-{
-  "mcpServers": {
-    "janus-pdf2tiff": {
-      "command": "node",
-      "args": ["/path/to/mcp-janus-pdf2tiff/index.js"]
-    },
-    "janus-tiff2pdf": {
-      "command": "node",
-      "args": ["/path/to/mcp-janus-tiff2pdf/index.js"]
-    }
-  }
-}
-```
-
-**After** (unified):
-```json
-{
-  "mcpServers": {
-    "janus-converter": {
-      "command": "node",
-      "args": ["/path/to/mcp-janus-converter/index.js"]
+      "command": "npx",
+      "args": ["-y", "@janus-mcp/converter"]
     }
   }
 }
@@ -332,19 +352,30 @@ Extracts images from PDF and saves as multi-page TIFF with **zero-copy** archite
 
 Embeds TIFF images into PDF with **intelligent routing**:
 
-| TIFF Compression | Tag | Strip-based | Tiled | Performance |
-|------------------|-----|-------------|-------|-------------|
-| **DCTDecode** | 7 | ✅ Zero-copy | ⚠️ Fallback | Most common format |
-| **JPEG2000 (JP2)** | 34712 | ✅ Zero-copy | ⚠️ Fallback | InziSoft format |
-| **JPEG2000 (J2K)** | 34713 | ✅ Zero-copy | ⚠️ Fallback | Minervasoft/Kakadu |
-| **JPEG2000 (libvips)** | 33004 | ✅ Zero-copy | ⚠️ Fallback | libvips encoding |
-| **JBIG2** | 34663 | ✅ Zero-copy | ⚠️ Fallback | Bilevel compression |
+| TIFF Compression | Tag | PDF Filter | Performance | Notes |
+|------------------|-----|------------|-------------|-------|
+| **CCITT Group 3** | 3 | CCITTFaxDecode | ✅ Zero-copy | FAX compression, K=0/4 |
+| **CCITT Group 4** | 4 | CCITTFaxDecode | ✅ Zero-copy | FAX compression, K=-1 |
+| **JPEG** | 7 | DCTDecode | ✅ Zero-copy | Most common format |
+| **DEFLATE** | 8 | FlateDecode | ✅ Zero-copy | ZIP compression |
+| **JPEG2000 (libvips)** | 33004 | JPXDecode | ✅ Zero-copy | libvips encoding |
+| **JPEG2000 (JP2)** | 34712 | JPXDecode | ✅ Zero-copy | InziSoft format |
+| **JPEG2000 (J2K)** | 34713 | JPXDecode | ✅ Zero-copy | Minervasoft/Kakadu |
+| **JBIG2** | 34663 | JBIG2Decode | ✅ Zero-copy | Bilevel compression |
+| **Uncompressed** | 1 | FlateDecode | 🔄 Re-encode | Decode + Deflate |
+| **CCITT RLE** | 2 | FlateDecode | 🔄 Re-encode | Modified Huffman |
+| **LZW** | 5 | FlateDecode | 🔄 Re-encode | Lempel-Ziv-Welch |
+| **PACKBITS** | 32773 | FlateDecode | 🔄 Re-encode | Apple RLE |
 
 **Legend**:
 - ✅ **Zero-copy**: Direct stream extraction (ultra-fast, ~100ms for 121 pages)
-- ⚠️ **Fallback**: Decode/re-encode with OpenJPEG (slower, ~22s for 121 pages, **74× slower**)
+- 🔄 **Re-encode**: Decode with libtiff + Deflate compression (fast, handles 1-bit bilevel images)
 
 **Advanced Features**:
+- **1-bit Bilevel Handling**: Automatically converts 1-bit bilevel images to 8-bit grayscale for PDF compatibility
+- **ColorSpace Detection**: Uses `samples_per_pixel` to determine `/DeviceGray` vs `/DeviceRGB`
+- **CCITT Group 3 K Parameter**: Detects 1D/2D encoding from Group3Options tag (K=0/4)
+- **JPEG ColorTransform**: Automatic detection from component IDs (1,2,3 vs 82,71,66)
 - **Automatic MCT Detection**: Parses JPEG2000 COD marker to detect MCT=0/1
 - **Smart Re-encoding**: Re-encodes MCT=0 streams to MCT=1 for proper color rendering
 - **JP2 IHDR Parsing**: Extracts true dimensions from JP2 container (fixes padding issues)
@@ -671,7 +702,8 @@ We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) 
 
 ## Roadmap
 
-- [ ] **v1.1.0**: Windows prebuilt binaries : **"(Build Tools required for installation)"**
+- [x] **v1.0.0**: Windows x64 prebuilt binaries
+- [x] **v1.1.0**: Linux x64 prebuilt binaries (Ubuntu 20.04+, glibc 2.31+)
 - [ ] **v1.2.0**: macOS ARM prebuilt binaries
 - [ ] **v1.3.0**: Advanced PDF metadata extraction
 - [ ] **v1.4.0**: TIFF annotation rendering
