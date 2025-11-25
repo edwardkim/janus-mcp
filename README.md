@@ -6,6 +6,7 @@
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.17.0-brightgreen)](https://nodejs.org/)
+[![NPM Downloads](https://img.shields.io/npm/dt/@janus-mcp/converter?color=blue&label=downloads&logo=npm)](https://www.npmjs.com/package/@janus-mcp/converter)
 
 ## Overview
 
