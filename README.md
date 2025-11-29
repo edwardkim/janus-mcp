@@ -2,31 +2,41 @@
 >The Zero-Copy Gateway for Instant TIFF ↔ PDF Conversion \
 >"Don't just convert files. Give your AI the power to read history."
 
-> "I started this project because I was tired of installing proprietary viewers just to check a simple document in banking projects. I wanted a way to view these 'weird' TIFFs in Chrome, instantly."
+> "JPEG2000-encoded TIFFs can't be opened with standard image viewers—they require proprietary vendor-specific software. This project started with a simple idea: what if we could convert them to PDF and view them in any standard web browser?"
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.17.0-brightgreen)](https://nodejs.org/)
 
 ## Overview
 
-`@janus-mcp/converter` is a unified MCP (Model Context Protocol) server that provides bidirectional TIFF ↔ PDF conversion with **zero-copy architecture** for maximum performance. This package combines the functionality of `mcp-janus-pdf2tiff` and `mcp-janus-tiff2pdf` into a single, easy-to-use tool.
+**Designed for AI/ML pipelines processing millions of scanned documents.**
+
+`@janus-mcp/converter` converts high-speed scanner multi-page TIFFs into normalized image PDFs optimized for AI training and inference. Built with **zero-copy architecture** for maximum throughput in enterprise-scale document processing.
 
 > **"Input is Innovation, Output is Delegation."**
 > We handle the complexity of legacy formats so you can simply delegate tasks to AI.
 
 ![Janus Workflow](https://unpkg.com/@janus-mcp/converter@latest/janus-workflow.png)
 
+### Design Goals
+
+| Goal | Solution |
+|------|----------|
+| **High Performance** | Zero-Copy architecture - no decode/re-encode overhead |
+| **High Volume** | 1,900+ pages/sec throughput, async non-blocking I/O |
+| **Format Normalization** | Proprietary tags (33004, 34713) → Standard 34712 |
+| **Idempotent Conversion** | TIFF→PDF→TIFF→PDF produces identical output |
+| **AI-Ready Output** | Standardized PDFs viewable in Chrome/Edge for OCR |
+
 ### Key Features
 
 - ✅ **Zero-Copy Architecture**: Direct stream extraction without decode/re-encode
 - ✅ **Ultra-Fast Performance**: ~4ms for 9-page documents (1.9MB)
 - ✅ **Non-Blocking Async**: Uses libuv thread pool for async conversion
-- ✅ **JPEG2000 Support**: JP2 (34712), J2K (34713), libvips (33004)
-- ✅ **JBIG2 Support**: Tag 34663
-- ✅ **JPEG Support**: Tag 7
+- ✅ **JPEG2000 Normalization**: Auto-converts 33004/34713 → 34712 (optional)
+- ✅ **Idempotent Round-Trip**: TIFF↔PDF conversion is fully reversible
 - ✅ **Multi-Page Support**: Convert multi-page TIFFs to multi-page PDFs
 - ✅ **MPL 2.0 License**: Open-source with copyleft protection
-- ✅ **4 Tools**: PDF→TIFF, TIFF→PDF, PDF info, TIFF info
 
 ### Why @janus-mcp/converter?
 
@@ -347,7 +357,54 @@ Asynchronous conversion (non-blocking, returns Promise).
 - Handles complex multi-strip JPEG structures with independent headers
 - Optimized for AI preprocessing workflows and high-volume document processing
 
+### 🔬 Scanner JPEG Storage: First Page vs Subsequent Pages
+
+> **Commonly Overlooked Implementation Detail**: High-speed document scanners store JPEG data differently for the first page versus subsequent pages. While this is defined in [TIFF Technical Note #2](https://libtiff.gitlab.io/libtiff/specification/technote2.html), many conversion tools fail to handle it correctly—resulting in corrupted output for multi-page documents.
+
+**The Problem:**
+
+High-speed scanners optimize memory by reusing JPEG quantization and Huffman tables:
+
+| Page | Storage Method | JPEGTABLES Tag | Strip Data |
+|------|----------------|----------------|------------|
+| **First page** | Full JPEG | ❌ Not used | Complete JPEG (SOI → EOI) |
+| **Subsequent pages** | Abbreviated JPEG | ✅ Shared tables | Scan data only (SOS → EOI) |
+
+```
+First Page:      [SOI][DQT][DHT][SOF][SOS]...image data...[EOI]  ← Complete JPEG
+                  └─────────────────────────────────────────┘
+                              Stored in Strip
+
+Subsequent Pages: [SOI][DQT][DHT]  +  [SOS]...image data...[EOI]  ← Split storage
+                  └──────────────┘    └─────────────────────┘
+                   JPEGTABLES tag         Strip data only
+```
+
+**Why existing tools fail:**
+- Most libraries assume all pages have the same structure
+- They either miss the JPEGTABLES tag or fail to reconstruct the full JPEG
+- Result: First page converts correctly, subsequent pages are corrupted or black
+
+**Our Solution:**
+
+```
+Detection → Is JPEGTABLES present?
+    │
+    ├─ No  → Single-strip: Direct Zero-Copy (0.8ms/page)
+    │
+    └─ Yes → Multi-strip: Smart reconstruction
+              │
+              ├─ First page: Use strip directly (already complete)
+              │
+              └─ Subsequent pages: JPEGTABLES + Strip → Decode → FlateDecode
+                                   (91.2ms/page, but correct output)
+```
+
+This hybrid approach achieves **correct conversion for all pages** while maintaining Zero-Copy performance where possible.
+
 ### Zero-Copy Architecture (Strip-based TIFF)
+
+> **Why strip-based?** High-speed document scanners with automatic document feeders (ADF) write images as sequential strips to optimize memory usage during continuous scanning. This "scan-as-you-go" approach means **the entire image is stored in a single strip** (RowsPerStrip = image height), enabling direct stream extraction without tile reassembly.
 
 | Conversion | Input Size | Output Size | Pages | Time | Throughput |
 |------------|------------|-------------|-------|------|------------|
@@ -358,11 +415,17 @@ Asynchronous conversion (non-blocking, returns Promise).
 
 ### Fallback Mode (Tiled TIFF)
 
+> **Why tiled TIFFs are slow:** Tiled TIFFs store images as a grid of independent tiles (e.g., 256×256 pixels). To create a valid PDF stream, all tiles must be **decoded → reassembled into a full image → re-encoded**. This is the same processing path used by PIL, ImageMagick, and other general-purpose image libraries—making it fundamentally impossible to achieve Zero-Copy performance.
+
 | Conversion | Input Size | Output Size | Pages | Time | Throughput |
 |------------|------------|-------------|-------|------|------------|
 | TIFF→PDF (tiled 33004) | - | 48 MB | 121 | **22s** | 5.5 pages/sec |
 
 **Performance Impact**: Strip-based vs Tiled = **74× faster** (0.3s vs 22s for 121 pages)
+
+The 74× performance difference isn't a library limitation—it's a **fundamental architectural difference**:
+- **Strip-based (Zero-Copy)**: Raw compressed stream → Direct embed into PDF (no decode)
+- **Tiled (Fallback)**: Decode all tiles → Reassemble full image → Re-encode → Embed (same as PIL/ImageMagick)
 
 ### Memory Usage
 
@@ -381,6 +444,51 @@ Asynchronous conversion (non-blocking, returns Promise).
 
 ## Supported Formats
 
+### 📋 Compression Format Support Matrix
+
+**Complete round-trip support with idempotent conversion guarantee.**
+
+| Compression | Tag | TIFF→PDF | PDF→TIFF | Idempotent | Notes |
+|-------------|-----|----------|----------|------------|-------|
+| **JPEG** | 7 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | Most common scanner format |
+| **JPEG2000 JP2** | 34712 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | leadtools |
+| **JPEG2000 J2K** | 34713 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | Kakadu |
+| **JPEG2000 libvips** | 33004 | ✅ Zero-Copy | - | ✅* | *Normalized to 34712 |
+| **JBIG2** | 34663 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | Bilevel (B&W) documents |
+| **CCITT Group 4** | 4 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | FAX G4 compression |
+| **CCITT Group 3** | 3 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | FAX G3 compression |
+| **DEFLATE** | 8 | ✅ Zero-Copy | ✅ Zero-Copy | ✅ | zlib/ZIP compression |
+| **LZW** | 5 | 🔄 Re-encode | ✅ DEFLATE | ✅ | Converted to DEFLATE |
+| **PACKBITS** | 32773 | 🔄 Re-encode | ✅ DEFLATE | ✅ | Converted to DEFLATE |
+| **Uncompressed** | 1 | 🔄 Re-encode | ✅ DEFLATE | ✅ | Converted to DEFLATE |
+
+**Legend**:
+- ✅ **Zero-Copy**: Raw data transfer without decode/re-encode (~100ms for 121 pages)
+- 🔄 **Re-encode**: Decoded and re-compressed as DEFLATE (still fast, maintains idempotency)
+- ✅ **Idempotent**: `TIFF → PDF → TIFF → PDF` produces byte-identical output after first conversion
+
+### JPEG2000 Normalization (Optional)
+
+For standardization across your document pipeline:
+
+```javascript
+// Enable JPEG2000 normalization
+const result = await tiff2pdf.ConvertAsync(tiffPath, pdfPath, {
+  normalizeJpeg2000: true,    // 33004, 34713 → 34712
+  normalizeFallback: 1        // 0=error, 1=keep original, 2=uncompressed
+});
+
+// Result includes normalization statistics
+console.log(result.normalizeSuccessCount);  // Pages normalized
+console.log(result.normalizeFailedCount);   // Fallback used
+```
+
+| Input Tag | Output Tag | Description |
+|-----------|------------|-------------|
+| 33004 (libvips) | 34712 (JP2) | Tile-based → Strip-based standard |
+| 34713 (J2K) | 34712 (JP2) | Codestream → Full JP2 container |
+| 34712 (JP2) | 34712 (JP2) | Already standard, no change |
+
 ### PDF → TIFF Conversion
 
 Extracts images from PDF and saves as multi-page TIFF with **zero-copy** architecture:
@@ -393,6 +501,7 @@ Extracts images from PDF and saves as multi-page TIFF with **zero-copy** archite
 | **JBIG2Decode** | JBIG2 | 34663 | ✅ Zero-copy | Bilevel images |
 | **CCITTFaxDecode** | CCITT Group 4 | 4 | ✅ Zero-copy | Fax compression |
 | **CCITTFaxDecode** | CCITT Group 3 | 3 | ✅ Zero-copy | Legacy fax |
+| **FlateDecode** | DEFLATE | 8 | ✅ Zero-copy | zlib compression |
 
 **Features**:
 - Automatic JBIG2 file header insertion (13 bytes) when needed
@@ -402,7 +511,7 @@ Extracts images from PDF and saves as multi-page TIFF with **zero-copy** archite
 
 ### TIFF → PDF Conversion
 
-Embeds TIFF images into PDF with **intelligent routing**:
+Embeds TIFF images into PDF with **automatic path selection** (Zero-Copy when possible, re-encode when necessary):
 
 | TIFF Compression | Tag | PDF Filter | Performance | Notes |
 |------------------|-----|------------|-------------|-------|
@@ -419,10 +528,6 @@ Embeds TIFF images into PDF with **intelligent routing**:
 | **CCITT RLE** | 2 | FlateDecode | 🔄 Re-encode | Modified Huffman |
 | **LZW** | 5 | FlateDecode | 🔄 Re-encode | Lempel-Ziv-Welch |
 | **PACKBITS** | 32773 | FlateDecode | 🔄 Re-encode | Apple RLE |
-
-**Legend**:
-- ✅ **Zero-copy**: Direct stream extraction (ultra-fast, ~100ms for 121 pages)
-- 🔄 **Re-encode**: Decode with libtiff + Deflate compression (fast, handles 1-bit bilevel images)
 
 **Advanced Features**:
 - **1-bit Bilevel Handling**: Automatically converts 1-bit bilevel images to 8-bit grayscale for PDF compatibility
